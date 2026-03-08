@@ -6,11 +6,11 @@
 <title>Constellation</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-html,body{width:100%;height:100%;overflow:hidden;background:#060610;touch-action:none;-webkit-user-select:none;user-select:none}
+html,body{width:100%;height:100%;overflow:hidden;background:#F2EBE1;touch-action:none;-webkit-user-select:none;user-select:none}
 canvas{display:block}
 .ui{position:fixed;left:0;right:0;text-align:center;pointer-events:none;z-index:10;font-family:Baskerville,'Palatino Linotype',Palatino,Georgia,serif}
-.title{top:28px;font-size:13px;letter-spacing:8px;text-transform:uppercase;color:rgba(180,190,230,0.22)}
-.hint{bottom:28px;font-size:11px;letter-spacing:3px;color:rgba(180,190,230,0.16);transition:opacity 6s ease}
+.title{top:28px;font-size:13px;letter-spacing:8px;text-transform:uppercase;color:rgba(80,70,60,0.28)}
+.hint{bottom:28px;font-size:11px;letter-spacing:3px;color:rgba(80,70,60,0.22);transition:opacity 6s ease}
 </style>
 </head>
 <body>
@@ -23,13 +23,13 @@ const C=document.getElementById('c');
 const X=C.getContext('2d');
 let W,H,DPR;
 
-// Palette
+// Palette — rich tones for light background
 const PAL=[
-  [100,225,255],  // cyan
-  [180,130,255],  // violet
-  [255,242,220],  // warm white
-  [255,155,185],  // rose
-  [130,255,205],  // mint
+  [185,90,120],   // dusty rose
+  [55,145,140],   // teal
+  [95,110,185],   // periwinkle
+  [190,150,65],   // amber
+  [140,85,160],   // plum
 ];
 
 // === AUDIO ===
@@ -57,13 +57,11 @@ function initAudio(){
 }
 
 function startAmbient(){
-  // Soft evolving chord: C3, E3, G3, B3
   const freqs=[130.81,164.81,196,246.94];
   const filter=ax.createBiquadFilter();
   filter.type='lowpass';filter.frequency.value=350;filter.Q.value=0.7;
   filter.connect(axReverb);
 
-  // Slow filter sweep LFO
   const fLfo=ax.createOscillator();fLfo.type='triangle';fLfo.frequency.value=0.02;
   const fLfoG=ax.createGain();fLfoG.gain.value=180;
   fLfo.connect(fLfoG);fLfoG.connect(filter.frequency);fLfo.start();
@@ -71,10 +69,8 @@ function startAmbient(){
   freqs.forEach((f,i)=>{
     const osc=ax.createOscillator();osc.type='sine';osc.frequency.value=f;
     const g=ax.createGain();g.gain.value=0;
-    // Fade in slowly over 4s staggered
     g.gain.linearRampToValueAtTime(0.03,ax.currentTime+2+i*0.8);
 
-    // Per-voice volume LFO for gentle movement
     const lfo=ax.createOscillator();lfo.type='sine';
     lfo.frequency.value=0.04+i*0.015;
     const lg=ax.createGain();lg.gain.value=0.012;
@@ -82,7 +78,6 @@ function startAmbient(){
 
     osc.connect(g);g.connect(filter);osc.start();
 
-    // Add a quiet second harmonic for warmth
     if(i<2){
       const h=ax.createOscillator();h.type='sine';h.frequency.value=f*2;
       const hg=ax.createGain();hg.gain.value=0;
@@ -91,7 +86,6 @@ function startAmbient(){
     }
   });
 
-  // Very quiet noise layer for texture
   const bufSize=ax.sampleRate*2;
   const buf=ax.createBuffer(1,bufSize,ax.sampleRate);
   const data=buf.getChannelData(0);
@@ -103,7 +97,6 @@ function startAmbient(){
   noise.connect(nf);nf.connect(ng);ng.connect(filter);noise.start();
 }
 
-// Pentatonic scale — always sounds harmonious
 const CHIME_NOTES=[523.25,587.33,659.25,783.99,880,1046.5];
 
 function playChime(){
@@ -111,7 +104,6 @@ function playChime(){
   const note=CHIME_NOTES[Math.floor(Math.random()*CHIME_NOTES.length)];
   const now=ax.currentTime;
 
-  // Main tone
   const o1=ax.createOscillator();o1.type='sine';o1.frequency.value=note;
   const g1=ax.createGain();
   g1.gain.setValueAtTime(0.13,now);
@@ -119,7 +111,6 @@ function playChime(){
   o1.connect(g1);g1.connect(axReverb);
   o1.start(now);o1.stop(now+2.5);
 
-  // Soft octave shimmer
   const o2=ax.createOscillator();o2.type='sine';o2.frequency.value=note*2;
   const g2=ax.createGain();
   g2.gain.setValueAtTime(0.04,now);
@@ -127,7 +118,6 @@ function playChime(){
   o2.connect(g2);g2.connect(axReverb);
   o2.start(now);o2.stop(now+1.8);
 
-  // Subtle fifth for richness
   const o3=ax.createOscillator();o3.type='sine';o3.frequency.value=note*1.5;
   const g3=ax.createGain();
   g3.gain.setValueAtTime(0.02,now);
@@ -195,17 +185,17 @@ function resize(){
   makeStars();
 }
 
-// Stars
+// Stars — subtle warm specks on light bg
 function makeStars(){
   stars=[];
-  const n=Math.min(400,Math.floor(W*H/5000));
+  const n=Math.min(300,Math.floor(W*H/6000));
   for(let i=0;i<n;i++){
     stars.push({
       x:Math.random()*W,
       y:Math.random()*H,
-      r:Math.random()*1.2+0.2,
-      b:Math.random()*0.4+0.08,
-      s:Math.random()*0.015+0.004,
+      r:Math.random()*1.0+0.3,
+      b:Math.random()*0.12+0.03,
+      s:Math.random()*0.012+0.003,
       o:Math.random()*6.28
     });
   }
@@ -234,7 +224,7 @@ function init(){
   for(let i=0;i<INIT_DOTS;i++){
     const d=makeDot(true);
     d.a=0;
-    d.birth=-Math.floor(Math.random()*120);// stagger fade-in
+    d.birth=-Math.floor(Math.random()*120);
     dots.push(d);
   }
 }
@@ -321,19 +311,31 @@ window.addEventListener('resize',()=>{resize();makeStars();});
 // === DRAWING ===
 
 function drawBg(){
-  const g=X.createRadialGradient(W*0.5,H*0.45,0,W*0.5,H*0.5,Math.max(W,H)*0.8);
-  g.addColorStop(0,'#0c0c22');
-  g.addColorStop(0.5,'#08081a');
-  g.addColorStop(1,'#040410');
+  // Warm cream gradient with subtle texture feel
+  const g=X.createRadialGradient(W*0.5,H*0.4,0,W*0.5,H*0.5,Math.max(W,H)*0.75);
+  g.addColorStop(0,'#F6F0E6');
+  g.addColorStop(0.6,'#F2EBE1');
+  g.addColorStop(1,'#EAE3D8');
   X.fillStyle=g;
   X.fillRect(0,0,W,H);
+
+  // Subtle grain overlay for paper feel
+  X.globalAlpha=0.015;
+  for(let i=0;i<800;i++){
+    const gx=Math.random()*W;
+    const gy=Math.random()*H;
+    const gr=Math.random()*1.5+0.3;
+    X.fillStyle=Math.random()>0.5?'#000':'#fff';
+    X.fillRect(gx,gy,gr,gr);
+  }
+  X.globalAlpha=1;
 }
 
 function drawStars(){
   for(const s of stars){
-    const tw=Math.sin(fr*s.s+s.o)*0.35+0.65;
+    const tw=Math.sin(fr*s.s+s.o)*0.3+0.7;
     X.globalAlpha=s.b*tw;
-    X.fillStyle='#c8d4ff';
+    X.fillStyle='#a09080';
     X.beginPath();
     X.arc(s.x,s.y,s.r,0,6.283);
     X.fill();
@@ -346,7 +348,7 @@ function drawConn(c){
   const ease=1-Math.pow(1-Math.min(1,c.p),3);
   const ex=da.x+(db.x-da.x)*ease;
   const ey=da.y+(db.y-da.y)*ease;
-  const pulse=Math.sin(fr*0.025)*0.18+0.82;
+  const pulse=Math.sin(fr*0.025)*0.12+0.88;
   const ma=Math.min(da.a,db.a);
 
   const r=(da.col[0]+db.col[0])/2;
@@ -355,28 +357,28 @@ function drawConn(c){
 
   X.lineCap='round';
 
-  // Outer glow
+  // Soft watercolor outer wash
   X.beginPath();X.moveTo(da.x,da.y);X.lineTo(ex,ey);
-  X.strokeStyle=`rgba(${r},${g},${b},${0.05*pulse*ma})`;
-  X.lineWidth=14;X.stroke();
+  X.strokeStyle=`rgba(${r},${g},${b},${0.08*pulse*ma})`;
+  X.lineWidth=16;X.stroke();
 
-  // Mid glow
+  // Mid body
   X.beginPath();X.moveTo(da.x,da.y);X.lineTo(ex,ey);
-  X.strokeStyle=`rgba(${r},${g},${b},${0.12*pulse*ma})`;
+  X.strokeStyle=`rgba(${r},${g},${b},${0.18*pulse*ma})`;
   X.lineWidth=5;X.stroke();
 
-  // Core
+  // Core line
   X.beginPath();X.moveTo(da.x,da.y);X.lineTo(ex,ey);
-  X.strokeStyle=`rgba(${r},${g},${b},${0.45*pulse*ma})`;
-  X.lineWidth=1.2;X.stroke();
+  X.strokeStyle=`rgba(${r},${g},${b},${0.55*pulse*ma})`;
+  X.lineWidth=1.5;X.stroke();
 
   // Tip glow during animation
   if(c.p<1){
-    const tg=X.createRadialGradient(ex,ey,0,ex,ey,18);
-    tg.addColorStop(0,`rgba(${r},${g},${b},${0.5*ma})`);
+    const tg=X.createRadialGradient(ex,ey,0,ex,ey,16);
+    tg.addColorStop(0,`rgba(${r},${g},${b},${0.4*ma})`);
     tg.addColorStop(1,`rgba(${r},${g},${b},0)`);
     X.fillStyle=tg;
-    X.beginPath();X.arc(ex,ey,18,0,6.283);X.fill();
+    X.beginPath();X.arc(ex,ey,16,0,6.283);X.fill();
   }
 }
 
@@ -389,7 +391,7 @@ function drawPreview(){
   const dd=Math.hypot(tx-d.x,ty-d.y);
   if(dd>CONN_DIST*1.3&&!target)return;
 
-  const alpha=target?0.2:0.08;
+  const alpha=target?0.3:0.12;
   X.beginPath();X.moveTo(d.x,d.y);X.lineTo(tx,ty);
   X.strokeStyle=`rgba(${d.col[0]},${d.col[1]},${d.col[2]},${alpha*d.a})`;
   X.lineWidth=1;
@@ -405,44 +407,45 @@ function drawDot(d,i){
   const isCon=d.cn.size>0;
 
   // Connected dots pulse together
-  const pulse=isCon?Math.sin(fr*0.025)*0.25+0.75:1;
+  const pulse=isCon?Math.sin(fr*0.025)*0.2+0.8:1;
   const r=d.r*(isHov?1.6:1)*(isSel?1.3:1);
   const alpha=d.a*pulse;
   if(alpha<0.01)return;
 
   const cr=d.col[0],cg=d.col[1],cb=d.col[2];
 
-  // Outer halo
-  const hr=r*(isCon?8:5);
-  const hg=X.createRadialGradient(d.x,d.y,r*0.3,d.x,d.y,hr);
-  hg.addColorStop(0,`rgba(${cr},${cg},${cb},${(isCon?0.22:0.15)*alpha})`);
-  hg.addColorStop(0.4,`rgba(${cr},${cg},${cb},${(isCon?0.06:0.04)*alpha})`);
+  // Wide watercolor wash
+  const hr=r*(isCon?12:8);
+  const hg=X.createRadialGradient(d.x,d.y,r,d.x,d.y,hr);
+  hg.addColorStop(0,`rgba(${cr},${cg},${cb},${(isCon?0.25:0.18)*alpha})`);
+  hg.addColorStop(0.3,`rgba(${cr},${cg},${cb},${(isCon?0.12:0.08)*alpha})`);
+  hg.addColorStop(0.7,`rgba(${cr},${cg},${cb},${(isCon?0.04:0.02)*alpha})`);
   hg.addColorStop(1,`rgba(${cr},${cg},${cb},0)`);
   X.fillStyle=hg;
   X.beginPath();X.arc(d.x,d.y,hr,0,6.283);X.fill();
 
-  // Core glow
-  const cg2=X.createRadialGradient(d.x,d.y,0,d.x,d.y,r*2);
+  // Inner glow ring
+  const cg2=X.createRadialGradient(d.x,d.y,0,d.x,d.y,r*3);
   cg2.addColorStop(0,`rgba(${cr},${cg},${cb},${0.9*alpha})`);
-  cg2.addColorStop(0.5,`rgba(${cr},${cg},${cb},${0.4*alpha})`);
+  cg2.addColorStop(0.4,`rgba(${cr},${cg},${cb},${0.45*alpha})`);
   cg2.addColorStop(1,`rgba(${cr},${cg},${cb},0)`);
   X.fillStyle=cg2;
-  X.beginPath();X.arc(d.x,d.y,r*2,0,6.283);X.fill();
+  X.beginPath();X.arc(d.x,d.y,r*3,0,6.283);X.fill();
 
   // Solid core
-  X.beginPath();X.arc(d.x,d.y,r,0,6.283);
+  X.beginPath();X.arc(d.x,d.y,r*1.1,0,6.283);
   X.fillStyle=`rgba(${cr},${cg},${cb},${alpha})`;
   X.fill();
 
-  // Bright center
+  // Bright center highlight
   X.beginPath();X.arc(d.x,d.y,r*0.45,0,6.283);
-  X.fillStyle=`rgba(255,255,255,${0.55*alpha})`;
+  X.fillStyle=`rgba(255,255,255,${0.75*alpha})`;
   X.fill();
 
   // Selection ring
   if(isSel){
     X.beginPath();X.arc(d.x,d.y,r+10,0,6.283);
-    X.strokeStyle=`rgba(${cr},${cg},${cb},${0.35*d.a})`;
+    X.strokeStyle=`rgba(${cr},${cg},${cb},${0.4*d.a})`;
     X.lineWidth=0.8;
     X.setLineDash([3,4]);
     X.stroke();
@@ -486,17 +489,13 @@ function render(){
   drawBg();
   drawStars();
 
-  // Connections (use additive blending for glow)
-  X.globalCompositeOperation='lighter';
+  // Connections — normal blending for light theme
   for(const c of conns) drawConn(c);
-  X.globalCompositeOperation='source-over';
 
   drawPreview();
 
-  // Dots (additive for glow)
-  X.globalCompositeOperation='lighter';
+  // Dots — normal blending for light theme
   for(let i=0;i<dots.length;i++) drawDot(dots[i],i);
-  X.globalCompositeOperation='source-over';
 
   update();
   requestAnimationFrame(render);
