@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Constellation</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;overflow:hidden;background:#060610;touch-action:none;-webkit-user-select:none;user-select:none}
+canvas{display:block}
+.ui{position:fixed;left:0;right:0;text-align:center;pointer-events:none;z-index:10;font-family:Baskerville,'Palatino Linotype',Palatino,Georgia,serif}
+.title{top:28px;font-size:13px;letter-spacing:8px;text-transform:uppercase;color:rgba(180,190,230,0.22)}
+.hint{bottom:28px;font-size:11px;letter-spacing:3px;color:rgba(180,190,230,0.16);transition:opacity 6s ease}
+</style>
+</head>
+<body>
+<div class="ui title">constellation</div>
+<div class="ui hint" id="hint">tap dots to connect · double-tap to release</div>
+<canvas id="c"></canvas>
+<script>
+(()=>{
+const C=document.getElementById('c');
+const X=C.getContext('2d');
+let W,H,DPR;
+
+// Palette
+const PAL=[
+  [100,225,255],  // cyan
+  [180,130,255],  // violet
+  [255,242,220],  // warm white
+  [255,155,185],  // rose
+  [130,255,205],  // mint
+];
+
+// === AUDIO ===
+let ax=null,axMaster=null,axReverb=null;
+
+function initAudio(){
+  if(ax)return;
+  ax=new(window.AudioContext||window.webkitAudioContext)();
+
+  axMaster=ax.createGain();
+  axMaster.gain.value=0.5;
+  axMaster.connect(ax.destination);
+
+  // Simple multi-tap delay reverb
+  axReverb=ax.createGain();
+  axReverb.gain.value=1;
+  axReverb.connect(axMaster);
+  [0.08,0.17,0.31,0.47].forEach(t=>{
+    const d=ax.createDelay();d.delayTime.value=t;
+    const g=ax.createGain();g.gain.value=0.12/(t*4+0.5);
+    axReverb.connect(d);d.connect(g);g.connect(axMaster);
+  });
+
+  startAmbient();
+}
+
+function startAmbient(){
+  // Soft evolving chord: C3, E3, G3, B3
+  const freqs=[130.81,164.81,196,246.94];
+  const filter=ax.createBiquadFilter();
+  filter.type='lowpass';filter.frequency.value=350;filter.Q.value=0.7;
+  filter.connect(axReverb);
+
+  // Slow filter sweep LFO
+  const fLfo=ax.createOscillator();fLfo.type='triangle';fLfo.frequency.value=0.02;
+  const fLfoG=ax.createGain();fLfoG.gain.value=180;
+  fLfo.connect(fLfoG);fLfoG.connect(filter.frequency);fLfo.start();
+
+  freqs.forEach((f,i)=>{
+    const osc=ax.createOscillator();osc.type='sine';osc.frequency.value=f;
+    const g=ax.createGain();g.gain.value=0;
+    // Fade in slowly over 4s staggered
+    g.gain.linearRampToValueAtTime(0.03,ax.currentTime+2+i*0.8);
+
+    // Per-voice volume LFO for gentle movement
+    const lfo=ax.createOscillator();lfo.type='sine';
+    lfo.frequency.value=0.04+i*0.015;
+    const lg=ax.createGain();lg.gain.value=0.012;
+    lfo.connect(lg);lg.connect(g.gain);lfo.start();
+
+    osc.connect(g);g.connect(filter);osc.start();
+
+    // Add a quiet second harmonic for warmth
+    if(i<2){
+      const h=ax.createOscillator();h.type='sine';h.frequency.value=f*2;
+      const hg=ax.createGain();hg.gain.value=0;
+      hg.gain.linearRampToValueAtTime(0.008,ax.currentTime+3+i);
+      h.connect(hg);hg.connect(filter);h.start();
+    }
+  });
+
+  // Very quiet noise layer for texture
+  const bufSize=ax.sampleRate*2;
+  const buf=ax.createBuffer(1,bufSize,ax.sampleRate);
+  const data=buf.getChannelData(0);
+  for(let i=0;i<bufSize;i++) data[i]=(Math.random()*2-1)*0.003;
+  const noise=ax.createBufferSource();noise.buffer=buf;noise.loop=true;
+  const nf=ax.createBiquadFilter();nf.type='bandpass';nf.frequency.value=500;nf.Q.value=0.3;
+  const ng=ax.createGain();ng.gain.value=0;
+  ng.gain.linearRampToValueAtTime(0.8,ax.currentTime+5);
+  noise.connect(nf);nf.connect(ng);ng.connect(filter);noise.start();
+}
+
+// Pentatonic scale — always sounds harmonious
+const CHIME_NOTES=[523.25,587.33,659.25,783.99,880,1046.5];
+
+function playChime(){
+  if(!ax)return;
+  const note=CHIME_NOTES[Math.floor(Math.random()*CHIME_NOTES.length)];
+  const now=ax.currentTime;
+
+  // Main tone
+  const o1=ax.createOscillator();o1.type='sine';o1.frequency.value=note;
+  const g1=ax.createGain();
+  g1.gain.setValueAtTime(0.13,now);
+  g1.gain.exponentialRampToValueAtTime(0.001,now+2.2);
+  o1.connect(g1);g1.connect(axReverb);
+  o1.start(now);o1.stop(now+2.5);
+
+  // Soft octave shimmer
+  const o2=ax.createOscillator();o2.type='sine';o2.frequency.value=note*2;
+  const g2=ax.createGain();
+  g2.gain.setValueAtTime(0.04,now);
+  g2.gain.exponentialRampToValueAtTime(0.001,now+1.5);
+  o2.connect(g2);g2.connect(axReverb);
+  o2.start(now);o2.stop(now+1.8);
+
+  // Subtle fifth for richness
+  const o3=ax.createOscillator();o3.type='sine';o3.frequency.value=note*1.5;
+  const g3=ax.createGain();
+  g3.gain.setValueAtTime(0.02,now);
+  g3.gain.exponentialRampToValueAtTime(0.001,now+1.8);
+  o3.connect(g3);g3.connect(axReverb);
+  o3.start(now);o3.stop(now+2);
+}
+
+function playDisconnect(){
+  if(!ax)return;
+  const now=ax.currentTime;
+  const o=ax.createOscillator();o.type='sine';
+  o.frequency.setValueAtTime(500,now);
+  o.frequency.exponentialRampToValueAtTime(180,now+0.7);
+  const g=ax.createGain();
+  g.gain.setValueAtTime(0.07,now);
+  g.gain.exponentialRampToValueAtTime(0.001,now+0.7);
+  o.connect(g);g.connect(axReverb);
+  o.start(now);o.stop(now+0.9);
+}
+
+function playSelect(){
+  if(!ax)return;
+  const now=ax.currentTime;
+  const o=ax.createOscillator();o.type='sine';
+  o.frequency.value=1200;
+  const g=ax.createGain();
+  g.gain.setValueAtTime(0.04,now);
+  g.gain.exponentialRampToValueAtTime(0.001,now+0.3);
+  o.connect(g);g.connect(axMaster);
+  o.start(now);o.stop(now+0.4);
+}
+
+// State
+let dots=[];
+let conns=[];
+let stars=[];
+let sel=-1;
+let hov=-1;
+let mx=-999,my=-999;
+let fr=0;
+let lastTap={t:0,i:-1};
+
+// Responsive config
+let INIT_DOTS,MAX_DOTS,CONN_DIST;
+
+function configure(){
+  const area=W*H;
+  INIT_DOTS=Math.min(40,Math.max(18,Math.floor(area/55000)+14));
+  MAX_DOTS=Math.min(60,Math.max(28,Math.floor(area/35000)+18));
+  CONN_DIST=Math.max(200,Math.min(350,Math.min(W,H)*0.4));
+}
+
+// Resize
+function resize(){
+  DPR=window.devicePixelRatio||1;
+  W=window.innerWidth;
+  H=window.innerHeight;
+  C.width=W*DPR;
+  C.height=H*DPR;
+  C.style.width=W+'px';
+  C.style.height=H+'px';
+  X.setTransform(DPR,0,0,DPR,0,0);
+  configure();
+  makeStars();
+}
+
+// Stars
+function makeStars(){
+  stars=[];
+  const n=Math.min(400,Math.floor(W*H/5000));
+  for(let i=0;i<n;i++){
+    stars.push({
+      x:Math.random()*W,
+      y:Math.random()*H,
+      r:Math.random()*1.2+0.2,
+      b:Math.random()*0.4+0.08,
+      s:Math.random()*0.015+0.004,
+      o:Math.random()*6.28
+    });
+  }
+}
+
+// Create dot
+function makeDot(instant){
+  const pad=40;
+  return{
+    x:Math.random()*(W-pad*2)+pad,
+    y:Math.random()*(H-pad*2)+pad,
+    r:Math.random()*3+2.5,
+    col:PAL[Math.floor(Math.random()*PAL.length)],
+    a:instant?1:0,
+    cn:new Set(),
+    po:Math.random()*6.28,
+    vx:(Math.random()-0.5)*0.04,
+    vy:(Math.random()-0.5)*0.04,
+    birth:fr
+  };
+}
+
+// Init
+function init(){
+  dots=[];conns=[];sel=-1;
+  for(let i=0;i<INIT_DOTS;i++){
+    const d=makeDot(true);
+    d.a=0;
+    d.birth=-Math.floor(Math.random()*120);// stagger fade-in
+    dots.push(d);
+  }
+}
+
+// Distance
+function dist(a,b){return Math.hypot(a.x-b.x,a.y-b.y)}
+
+// Find dot near point
+function findDot(px,py){
+  let best=-1,bd=32;
+  for(let i=0;i<dots.length;i++){
+    if(dots[i].a<0.2)continue;
+    const d=Math.hypot(dots[i].x-px,dots[i].y-py);
+    if(d<bd){bd=d;best=i;}
+  }
+  return best;
+}
+
+// Connect
+function connect(a,b){
+  if(a===b||dots[a].cn.has(b))return;
+  if(dist(dots[a],dots[b])>CONN_DIST)return;
+  dots[a].cn.add(b);
+  dots[b].cn.add(a);
+  conns.push({a,b,p:0,t:fr});
+  playChime();
+}
+
+// Disconnect
+function disconnect(i){
+  for(const j of dots[i].cn) dots[j].cn.delete(i);
+  dots[i].cn.clear();
+  conns=conns.filter(c=>c.a!==i&&c.b!==i);
+}
+
+// Handle tap
+function tap(px,py){
+  const i=findDot(px,py);
+  const now=performance.now();
+
+  // Double-tap
+  if(i>=0&&lastTap.i===i&&now-lastTap.t<380){
+    disconnect(i);
+    playDisconnect();
+    sel=-1;
+    lastTap={t:0,i:-1};
+    return;
+  }
+  lastTap={t:now,i:i};
+
+  if(i<0){sel=-1;return;}
+  initAudio();
+  if(sel>=0&&sel!==i) connect(sel,i);
+  else playSelect();
+  sel=i;
+}
+
+// Mouse
+C.addEventListener('mousedown',e=>tap(e.clientX,e.clientY));
+C.addEventListener('mousemove',e=>{
+  mx=e.clientX;my=e.clientY;
+  hov=findDot(mx,my);
+  C.style.cursor=hov>=0?'pointer':'default';
+});
+C.addEventListener('mouseleave',()=>{hov=-1;mx=-999;my=-999;});
+
+// Touch
+C.addEventListener('touchstart',e=>{
+  e.preventDefault();
+  const t=e.touches[0];
+  mx=t.clientX;my=t.clientY;
+  tap(t.clientX,t.clientY);
+},{passive:false});
+C.addEventListener('touchmove',e=>{
+  e.preventDefault();
+  const t=e.touches[0];
+  mx=t.clientX;my=t.clientY;
+  hov=findDot(mx,my);
+},{passive:false});
+C.addEventListener('touchend',()=>{hov=-1;});
+
+window.addEventListener('resize',()=>{resize();makeStars();});
+
+// === DRAWING ===
+
+function drawBg(){
+  const g=X.createRadialGradient(W*0.5,H*0.45,0,W*0.5,H*0.5,Math.max(W,H)*0.8);
+  g.addColorStop(0,'#0c0c22');
+  g.addColorStop(0.5,'#08081a');
+  g.addColorStop(1,'#040410');
+  X.fillStyle=g;
+  X.fillRect(0,0,W,H);
+}
+
+function drawStars(){
+  for(const s of stars){
+    const tw=Math.sin(fr*s.s+s.o)*0.35+0.65;
+    X.globalAlpha=s.b*tw;
+    X.fillStyle='#c8d4ff';
+    X.beginPath();
+    X.arc(s.x,s.y,s.r,0,6.283);
+    X.fill();
+  }
+  X.globalAlpha=1;
+}
+
+function drawConn(c){
+  const da=dots[c.a],db=dots[c.b];
+  const ease=1-Math.pow(1-Math.min(1,c.p),3);
+  const ex=da.x+(db.x-da.x)*ease;
+  const ey=da.y+(db.y-da.y)*ease;
+  const pulse=Math.sin(fr*0.025)*0.18+0.82;
+  const ma=Math.min(da.a,db.a);
+
+  const r=(da.col[0]+db.col[0])/2;
+  const g=(da.col[1]+db.col[1])/2;
+  const b=(da.col[2]+db.col[2])/2;
+
+  X.lineCap='round';
+
+  // Outer glow
+  X.beginPath();X.moveTo(da.x,da.y);X.lineTo(ex,ey);
+  X.strokeStyle=`rgba(${r},${g},${b},${0.05*pulse*ma})`;
+  X.lineWidth=14;X.stroke();
+
+  // Mid glow
+  X.beginPath();X.moveTo(da.x,da.y);X.lineTo(ex,ey);
+  X.strokeStyle=`rgba(${r},${g},${b},${0.12*pulse*ma})`;
+  X.lineWidth=5;X.stroke();
+
+  // Core
+  X.beginPath();X.moveTo(da.x,da.y);X.lineTo(ex,ey);
+  X.strokeStyle=`rgba(${r},${g},${b},${0.45*pulse*ma})`;
+  X.lineWidth=1.2;X.stroke();
+
+  // Tip glow during animation
+  if(c.p<1){
+    const tg=X.createRadialGradient(ex,ey,0,ex,ey,18);
+    tg.addColorStop(0,`rgba(${r},${g},${b},${0.5*ma})`);
+    tg.addColorStop(1,`rgba(${r},${g},${b},0)`);
+    X.fillStyle=tg;
+    X.beginPath();X.arc(ex,ey,18,0,6.283);X.fill();
+  }
+}
+
+function drawPreview(){
+  if(sel<0||mx<-900)return;
+  const d=dots[sel];
+  const target=hov>=0&&hov!==sel&&dist(dots[sel],dots[hov])<=CONN_DIST?dots[hov]:null;
+  const tx=target?target.x:mx;
+  const ty=target?target.y:my;
+  const dd=Math.hypot(tx-d.x,ty-d.y);
+  if(dd>CONN_DIST*1.3&&!target)return;
+
+  const alpha=target?0.2:0.08;
+  X.beginPath();X.moveTo(d.x,d.y);X.lineTo(tx,ty);
+  X.strokeStyle=`rgba(${d.col[0]},${d.col[1]},${d.col[2]},${alpha*d.a})`;
+  X.lineWidth=1;
+  X.setLineDash([4,6]);
+  X.lineCap='round';
+  X.stroke();
+  X.setLineDash([]);
+}
+
+function drawDot(d,i){
+  const isSel=i===sel;
+  const isHov=i===hov;
+  const isCon=d.cn.size>0;
+
+  // Connected dots pulse together
+  const pulse=isCon?Math.sin(fr*0.025)*0.25+0.75:1;
+  const r=d.r*(isHov?1.6:1)*(isSel?1.3:1);
+  const alpha=d.a*pulse;
+  if(alpha<0.01)return;
+
+  const cr=d.col[0],cg=d.col[1],cb=d.col[2];
+
+  // Outer halo
+  const hr=r*(isCon?8:5);
+  const hg=X.createRadialGradient(d.x,d.y,r*0.3,d.x,d.y,hr);
+  hg.addColorStop(0,`rgba(${cr},${cg},${cb},${(isCon?0.22:0.15)*alpha})`);
+  hg.addColorStop(0.4,`rgba(${cr},${cg},${cb},${(isCon?0.06:0.04)*alpha})`);
+  hg.addColorStop(1,`rgba(${cr},${cg},${cb},0)`);
+  X.fillStyle=hg;
+  X.beginPath();X.arc(d.x,d.y,hr,0,6.283);X.fill();
+
+  // Core glow
+  const cg2=X.createRadialGradient(d.x,d.y,0,d.x,d.y,r*2);
+  cg2.addColorStop(0,`rgba(${cr},${cg},${cb},${0.9*alpha})`);
+  cg2.addColorStop(0.5,`rgba(${cr},${cg},${cb},${0.4*alpha})`);
+  cg2.addColorStop(1,`rgba(${cr},${cg},${cb},0)`);
+  X.fillStyle=cg2;
+  X.beginPath();X.arc(d.x,d.y,r*2,0,6.283);X.fill();
+
+  // Solid core
+  X.beginPath();X.arc(d.x,d.y,r,0,6.283);
+  X.fillStyle=`rgba(${cr},${cg},${cb},${alpha})`;
+  X.fill();
+
+  // Bright center
+  X.beginPath();X.arc(d.x,d.y,r*0.45,0,6.283);
+  X.fillStyle=`rgba(255,255,255,${0.55*alpha})`;
+  X.fill();
+
+  // Selection ring
+  if(isSel){
+    X.beginPath();X.arc(d.x,d.y,r+10,0,6.283);
+    X.strokeStyle=`rgba(${cr},${cg},${cb},${0.35*d.a})`;
+    X.lineWidth=0.8;
+    X.setLineDash([3,4]);
+    X.stroke();
+    X.setLineDash([]);
+  }
+}
+
+// === UPDATE ===
+function update(){
+  fr++;
+
+  // Fade in dots
+  for(const d of dots){
+    const age=fr-d.birth;
+    if(d.a<1&&age>0) d.a=Math.min(1,d.a+0.008);
+
+    // Gentle drift
+    d.x+=d.vx;
+    d.y+=d.vy;
+    const pad=30;
+    if(d.x<pad){d.x=pad;d.vx=Math.abs(d.vx);}
+    if(d.x>W-pad){d.x=W-pad;d.vx=-Math.abs(d.vx);}
+    if(d.y<pad){d.y=pad;d.vy=Math.abs(d.vy);}
+    if(d.y>H-pad){d.y=H-pad;d.vy=-Math.abs(d.vy);}
+  }
+
+  // Animate connections
+  for(const c of conns){
+    if(c.p<1) c.p=Math.min(1,c.p+0.035);
+  }
+
+  // Spawn new dots
+  if(dots.length<MAX_DOTS&&fr%280===0&&fr>60){
+    dots.push(makeDot(false));
+  }
+}
+
+// === RENDER LOOP ===
+function render(){
+  X.clearRect(0,0,W,H);
+  drawBg();
+  drawStars();
+
+  // Connections (use additive blending for glow)
+  X.globalCompositeOperation='lighter';
+  for(const c of conns) drawConn(c);
+  X.globalCompositeOperation='source-over';
+
+  drawPreview();
+
+  // Dots (additive for glow)
+  X.globalCompositeOperation='lighter';
+  for(let i=0;i<dots.length;i++) drawDot(dots[i],i);
+  X.globalCompositeOperation='source-over';
+
+  update();
+  requestAnimationFrame(render);
+}
+
+// === GO ===
+resize();
+init();
+render();
+
+setTimeout(()=>{
+  const h=document.getElementById('hint');
+  if(h)h.style.opacity='0';
+},7000);
+
+})();
+</script>
+</body>
+</html>
